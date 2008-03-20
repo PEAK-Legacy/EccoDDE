@@ -1,8 +1,9 @@
-import os, sys, time, csv
+import os, sys, time, csv, datetime
 
 __all__ = [
     'EccoDDE', 'DDEConnectionError', 'StateError', 'FileNotOpened',
-    'WrongSession', 'ItemType', 'FolderType',
+    'WrongSession', 'ItemType', 'FolderType', 'InsertLevel', 'OLEMode',
+    'format_date', 'format_datetime',
 ]
 
 class DDEConnectionError(Exception):
@@ -17,6 +18,27 @@ class FileNotOpened(StateError):
 class WrongSession(StateError):
     """The expected session is not active"""
 
+
+def format_date(dt):
+    if hasattr(dt, 'strftime'):
+        return dt.strftime("%Y%m%d")
+    return dt
+
+def format_datetime(dt):
+    if hasattr(dt, 'strftime'):
+        return dt.strftime("%Y%m%d%H%M%s")
+    return dt
+
+
+def additional_tests():
+    import doctest
+    return doctest.DocFileSuite(
+        'README.txt',
+        optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
+    )
+
+
+
 # Item Types
 class ItemType(object):
     ItemText = 1
@@ -29,6 +51,25 @@ class FolderType(object):
     Number     	 = 3
     Text       	 = 4
     PopUpList	 = 5
+
+# Insert locations
+class InsertLevel(object):
+    Indent  = 'd'   # "first daughter"
+    Outdent = 'a'   # "next aunt"
+    Same    = 's'   # "next sister"
+
+# OLE Modes
+class OLEMode(object):
+    Link = 1
+    Embed = 2
+
+
+
+
+
+
+
+
 
 
 
@@ -67,8 +108,8 @@ def fold(seq):
     seq = iter(seq)
     return zip(seq, seq)
 
-
-
+def unfold(seq):
+    return [i2 for i1 in sequence for i2 in i1]
 
 
 
@@ -88,7 +129,7 @@ class EccoDDE(object):
     filename = None
     connection = None
     server = None
-    
+
     def __init__(self, **kw):
         cls = self.__class__
         for k, v in kw.items():
@@ -120,7 +161,7 @@ class EccoDDE(object):
             except: return
             else: self.CloseFile(session)
 
-            
+
     def open(self):
         if self.connection is not None:
             return
@@ -170,7 +211,7 @@ class EccoDDE(object):
         sequences, which will then be turned into a csv-formatted string.
 
         If the resulting command is more than 250 characters long, a DDE 'exec'
-        will be used instead of a 'request'.  In either case, the result is        
+        will be used instead of a 'request'.  In either case, the result is
         parsed from csv into a list of lists of strings, and then returned.
         """
         if args:
@@ -208,7 +249,7 @@ class EccoDDE(object):
             return [map(cvt, row) for row in self(cmd, *ob)]
         else:
             return map(cvt, self(cmd, ob)[0])
-            
+
     # --- "DDE Requests supported"
 
     def CreateFolder(self, name_or_dict, folder_type=FolderType.CheckMark):#
@@ -223,18 +264,18 @@ class EccoDDE(object):
         items = name_or_dict.items()
         items = zip(
             items,
-            self.intlist('CreateFolder', [i2 for i1 in items for i2 in i1])
+            self.intlist('CreateFolder', *unfold(items))
         )
         return dict([(k,i) for (k,t),i in items])
-        
+
     def CreateItem(self, item, data=()):#
         """Create `item` (text) with optional data, returning new item id
 
         `data`, if supplied, should be a sequence of ``(folderid,value)`` pairs
         for the item to be initialized with.
         """
-        return self.intlist('CreateItem', *fold(data))[0]
-        
+        return self.intlist('CreateItem', *unfold(data))[0]
+
     def GetFoldersByName(self, name):
         """Return a list of folder ids for folders matching `name`"""
         return self.intlist('GetFoldersByName', name)
@@ -257,7 +298,7 @@ class EccoDDE(object):
 
             # No sort, item text contains 'foo'
             GetFolderItems(id, 'IC', 'foo')
-            
+
         See the Ecco API documentation for the full list of supported
         operators.
         """
@@ -271,8 +312,6 @@ class EccoDDE(object):
         """Type for `folder_id` (or a list of types if id is an iterable)"""
         return self.one_or_many('GetFolderType', folder_id)
 
-    #GetFolderValues
-    #GetItemFolders   = singleToSeq('GetItemFolders',   'item_id(s) -> folder_ids')
 
 
 
@@ -284,6 +323,72 @@ class EccoDDE(object):
 
 
 
+
+
+
+    def GetFolderValues(self, item_ids, folder_ids):#
+        """Return folder values for specified folders and items
+
+        `item_ids` can be a single item ID, or a sequence.  If it's a sequence,
+        the return value is a sequence ordered by the input item ids.
+
+        `folder_ids` can be a single folder ID, or a sequence.  If it's a
+        sequence, the data returned for each item is a sequence ordered by the
+        input folder ids.
+
+        If a single item ID and single folder ID are used, that folder value is
+        returned for that item.  If a single folder ID is used and multiple
+        item IDs, the result is a list of values, one value per item.  If
+        multiple folder IDs are used, and only one item ID, then the result is
+        a single list containing the values for that one item.
+
+        In other words, depending on the input, you'll get either a value, a
+        list of values (either different folders for one item, or one folder
+        for different items), or a list of lists of values.
+        """
+        cmd = [['GetFolderValues'], []]
+        for inp,out in zip([item_ids,folder_ids], cmd):
+            if hasattr(inp,'__iter__'):
+                out.extend(inp)
+            else:
+                out.append(inp)
+        data = self(cmd)
+        if not hasattr(folder_ids, '__iter__'):
+            for i,v in enumerate(data): data[i], = v
+        if not hasattr(item_ids, '__iter__'):
+            data, = data
+        return data
+
+
+
+
+
+
+
+
+
+    def GetItemFolders(self, item_ids):#
+        """Get the folders for `item_ids`
+
+        If `item_ids` is iterable, each element must be either an item id or
+        an iterable of item ids, representing a set of items for whom the
+        folders should be retrieved.  The result is a list of lists of folders,
+        corresponding to the order of the input iterable.
+
+        If `item_ids` is not iterable, the return value is a list of folder ids
+        containing that one specific item.
+        """
+        if hasattr(item_ids, '__iter__'):
+            data = []
+            for item in item_ids:
+                if hasattr(item, '__iter__'):
+                    data.append(list(item))
+                else:
+                    data.append([item])
+            data[0].insert(0,'GetItemFolders')
+            return [map(int,d) for d in self(data)]
+        else:
+            return self.intlist('GetItemFolders',item_ids)
 
     def GetItemParents(self, item_id):#
         """Return list of parent item ids (highest to lowest) of `item_id`
@@ -301,12 +406,14 @@ class EccoDDE(object):
         """Text for `item_id` (or a list of strings if id is an iterable)"""
         return self.one_or_many('GetItemText', item_id, str)
 
+
+
     def GetItemType(self, item_id):#
         """Type for `item_id` (or a list of types if id is an iterable)"""
         return self.one_or_many('GetItemType', item_id)
 
     def GetSelection(self):#
-        """ -> [ type (1=items, 2=folders), selectedIds]"""
+        """Returns a list: [ type (1=items, 2=folders), selectedIds]"""
         res = [ map(int,line) for line in self('GetSelection') ]
         res[0] = res[0][0]
         return res
@@ -314,17 +421,6 @@ class EccoDDE(object):
     def GetVersion(self):
         """Return the Ecco API protocol version triple (major, minor, rev#)"""
         return self.intlist('GetVersion')
-        
-
-
-
-
-
-
-
-
-
-
 
     def NewFile(self):
         """Create a new 'Untitled' file, returning a session id"""
@@ -338,15 +434,39 @@ class EccoDDE(object):
         """
         result = self(format([['OpenFile', pathname]]))[0]
         result = result and int(result[0]) or 0
-        if not result:
-            raise FileNotOpened(pathname)
+        if not result: raise FileNotOpened(pathname)
         return result
 
-    #PasteOLEItem Flags, [ ItemID ], ( FolderID, FolderValue ) * -> ItemID
+    def PasteOLEItem(self, mode=OLEMode.Embed, item_id=None, data=()):#
+        """Paste from  the clipboard, returning an item id
+        
+        If `item_id` is not None, the paste will go into that item.  `mode`
+        should be ``OLEMode.Link`` or ``OLEMode.Embed`` (the default).  `data`,
+        if supplied, should be a sequence of ``(folderid,value)`` pairs for the
+        item to be initialized or updated with.
+        """
+        if item_id is None:
+            item_id = ''
+        return int(self('PasteOleItem', mode, item_id, *unfold(data))[0][0])
 
     # --- "Extended DDE Requests"
 
-    #GetChanges
+    def GetChanges(self, timestamp, folder_ids=()):#
+        """Get changes since `timestamp`, optionally restricted to `folder_ids`
+
+        `timestamp` is an opaque value from Ecco itself, supplied as part of
+        the return value from this method.  If `folder_ids` is supplied, only
+        changes to those folders and the items in them are included. 
+        Returns a triple of ``(nextstamp, items, folders_)``, where
+        ``nextstamp`` is the value that should be passed in to the next call to
+        ``GetChanges()``, ``items`` is a list of items with changed text or
+        folder values, and ``folders`` is a list of folders that have had items
+        removed.  Note that due to the way Ecco processes change timestamps,
+        not all listed items or folders may have actually changed since your
+        last call to this method.
+        """
+        data = self('GetChanges', timestamp, *folder_ids)
+        return int(data[0][0]), map(int, data[1]), map(int, data[2])
 
     def GetViews(self):
         """Return a list of the view ids of all views in current session"""
@@ -366,7 +486,6 @@ class EccoDDE(object):
         else:
             return self.one_or_many('GetViewNames', view_id, str)
 
-
     def GetViewFolders(self, view_id):
         """Folder ids for `view_id` (or list of lists if id is an iterable)"""
         return self.one_or_many_to_many('GetViewFolders', view_id)
@@ -374,7 +493,7 @@ class EccoDDE(object):
     def GetPopupValues(self, folder_id):#
         """Popup values for `folder_id` (or list of lists if id is iterable)"""
         return self.one_or_many_to_many('GetPopupValues', folder_id, str)
-       
+
     def GetFolderOutline(self):
         """Return a list of ``(folderid, depth)`` pairs for the current file"""
         return fold(self.intlist("GetFolderOutline"))
@@ -406,18 +525,18 @@ class EccoDDE(object):
         """Return the session id of the active file"""
         return int(self('GetCurrentFile')[0][0])
 
-
-
     def GetFileName(self, session_id):
         """Return the file name for the given session ID"""
         return self(format([['GetFileName', session_id]]))[0][0]
+
+
 
     # --- "DDE Pokes supported"
 
     def ChangeFile(self, session_id):#
         """Switch to the designated `session_id`"""
-        # Alas, the poke doesn't always work, at least not in my Ecco...
         if self.GetCurrentFile()!=session_id:
+            # Alas, this poke doesn't always work, at least not in my Ecco...
             self.poke('ChangeFile', session_id)
             # So we may have to use OpenFile instead:
             if self.GetCurrentFile()!=session_id:
@@ -428,8 +547,21 @@ class EccoDDE(object):
         self.assert_session(session_id)
         self.poke('CloseFile')
 
-    #CopyOLEItem ItemID
-    #InsertItem ItemID, flags, ItemID *
+    def CopyOLEItem(self, item_id):#
+        """Copy the specified OLE item to the Windows clipboard"""
+        self.poke('CopyOLEItem', item_id)
+
+    def InsertItem(self, anchor_id, items, where=InsertLevel.Indent):#
+        """Insert item or items at `anchor_id` w/optional indent
+
+        `where` should be ``InsertLevel.Indent``, ``InsertLevel.Outdent``,
+        or ``InsertLevel.Same`` (default is ``Indent``).  `items` may be
+        a single item id, or a sequence of items.  The items are moved to
+        a point relative to `anchor_id`, which may be 0 to indicate that
+        the item(s) are to become top-level.
+        """
+        if not hasattr(items, '__iter__'): items = [items]
+        self.poke('InsertItem', anchor_id, where, *items)
 
     def RemoveItem(self, item_id):#
         """Delete `item_id` (can be an iterable of ids)"""
@@ -437,6 +569,8 @@ class EccoDDE(object):
             self.poke('RemoveItem', *item_id)
         else:
             self.poke('RemoveItem', item_id)
+
+
 
     def SaveFile(self, session_id, pathname=None):#
         """Save the designated session to `pathname`; fails if not current"""
@@ -446,17 +580,96 @@ class EccoDDE(object):
         else:
             self.poke('SaveFile')
 
-
-
-
     def SetFolderName(self, folder_id, name):#
         """Set the name of `folder_id` to `name`"""
         self.poke('SetFolderName', folder_id, name)
 
-    #SetFolderValues < FolderID * > < ItemID * > < FolderValue * > *
-    #SetItemText ( ItemID, "text" ) *
-    #ShowPhoneBookItem,<itemId>[,<bClear>]
-    
+
+    def SetFolderValues(self, item_ids, folder_ids, values):#
+        """Return folder values for specified folders and items
+
+        `item_ids` can be a single item ID, or a sequence.  If it's a sequence,
+        then `values` must be a sequence ordered by the input item ids.
+
+        `folder_ids` can be a single folder ID, or a sequence.  If it's a
+        sequence, the `values` for each item must be a sequence ordered by the
+        input folder ids.
+
+        If a single item ID and single folder ID are used, then `values` must
+        be a single value.  If a single folder ID is used and multiple item
+        IDs, then `values` must be a list of values, one value per item.  If
+        multiple folder IDs are used, and only one item ID, then `values` must
+        be a single list containing the values for that one item.
+
+        In other words, depending on the target, you'll set either a value, a
+        list of values (either different folders for one item, or one folder
+        for different items), or a list of lists of values.
+        """
+        cmd = [['GetFolderValues'], []]
+
+        multi_folder = hasattr(folder_ids, '__iter__')
+        multi_item = hasattr(item_ids, '__iter__')
+
+
+
+
+        if multi_folder:
+            cmd[0].extend(folder_ids)
+            if multi_item:
+                if not hasattr(values, '__len__'):
+                    values = list(values)
+            else:
+                values = [values]
+        else:
+            cmd[0].append(folder_ids)
+            if multi_item:
+                values = [[v] for v in values]
+            else:
+                values = [[values]]
+
+        if multi_item:
+            cmd[1].extend(item_ids)
+        else:
+            cmd[1].append(item_ids)
+
+        fc = len(cmd[0])-1
+        ic = len(cmd[1])
+        if len(values)!=ic:
+            raise ValueError("Length mismatch between item_ids and values")
+
+        for i,v in values:
+            if not hasattr(v, '__len__'):
+                v = list(v)
+            if len(v)!=fc:
+                raise ValueError("Length mismatch between folder_ids and values")
+            cmd.append(v)
+
+        self.poke(cmd)
+
+
+
+
+
+
+
+
+
+    def SetItemText(self, item_id, text=None):#
+        """Set the text of `item_id` to `text` (or a dictionary of item->text)
+
+        If `text` is None, `item_id` must be a dictionary mapping item ID's to
+        text values.  Otherwise, `item_id` should be a single item ID, and
+        `text` is the text to set.
+        """
+        if text is None:
+            self.poke('SetItemText', *unfold(item_id.items()))            
+        else:
+            self.poke('SetItemText', item_id, text)
+        
+    def ShowPhoneBookItem(self, item_id, clear=True):#
+        """Show the specified item in the phonebook view"""
+        self.poke('ShowPhoneBookItem', item_id, int(bool(clear)))
+
     # --- "Extended DDE Pokes"
 
     def ChangeView(self, view_id):#
@@ -466,49 +679,41 @@ class EccoDDE(object):
     def AddCompView(self, view_id):#
         """Add `view_id` as a composite view to the current view"""
         self.poke('AddCompView', view_id)
-        
+
     def RemoveCompView(self, view_id):#
         """Remove the specified view from the current view's composite views"""
         self.poke('RemoveCompView', view_id)
 
-    #SetCalDate Date
+    def SetCalDate(self, date):#
+        """Display `date` in the calendar (only if calendar is already visible)
+
+        `date` may be a ``datetime.date`` or ``datetime.datetime`` instance, or
+        any other object with a ``strftime()`` method.  Otherwise, it should be
+        a string already formatted to Ecco's date format.
+        """
+        self.poke('SetCalDate', format_date(date))
+
+
 
     def DeleteView(self, view_id):#
-        """Delete the specified view"""
-        self.poke('DeleteView', view_id)
+        """Delete the specified view(s)  (`view_id` can be an iterable)"""
+        self.poke_one_or_many('DeleteView', view_id)
 
     #AddFileToMenu FilePath IconID
-    #AddColumnToView ViewID FolderID*
-    #AddFolderToView ViewID FolderID*
 
+    def AddColumnToView(self, view_id, folder_id):#
+        """Add the specified folder(s) as column(s) of `view_id`"""
+        self.poke_one_or_many('AddColumnToView', folder_id, view_id)
 
+    def AddFolderToView(self, view_id, folder_id):#
+        """Add the specified folder(s) to contents of `view_id`"""
+        self.poke_one_or_many('AddFolderToView', folder_id, view_id)
 
-
-
-
-
-
-
-
-def additional_tests():
-    import doctest
-    return doctest.DocFileSuite(
-        'README.txt',
-        optionflags=doctest.ELLIPSIS|doctest.NORMALIZE_WHITESPACE,
-    )
-
-
-
-
-
-
-
-
-
-
-
-
-
+    def poke_one_or_many(self, cmd, ob, *args):
+        if hasattr(ob, '__iter__') and not isinstance(ob, basestring):
+            self.poke(cmd, *args+tuple(ob))
+        else:
+            self.poke(cmd, *args+(ob,))
 
 
 
