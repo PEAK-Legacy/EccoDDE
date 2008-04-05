@@ -95,7 +95,7 @@ def sz(s):
         return s.split('\000',1)[0]
 
 class output(list):
-    """StringIO-substitute for parsing"""
+    """StringIO-substitute for csv writing"""
     __slots__ = ()
     write = list.append
 
@@ -109,7 +109,7 @@ def fold(seq):
     return zip(seq, seq)
 
 def unfold(seq):
-    return [i2 for i1 in sequence for i2 in i1]
+    return [i2 for i1 in seq for i2 in i1]
 
 
 
@@ -157,9 +157,9 @@ class EccoDDE(object):
         """Attempt to close all open files"""
         self.open()
         while True:
-            try: session = self.GetCurrentFile()
-            except: return
-            else: self.CloseFile(session)
+            session = self.GetCurrentFile()
+            if session is None: return
+            self.CloseFile(session)
 
 
     def open(self):
@@ -252,7 +252,7 @@ class EccoDDE(object):
 
     # --- "DDE Requests supported"
 
-    def CreateFolder(self, name_or_dict, folder_type=FolderType.CheckMark):#
+    def CreateFolder(self, name_or_dict, folder_type=FolderType.CheckMark):
         """Create folders for a name or a dictionary mapping names to types
         If `name_or_dict` is a string, create a folder of `folder_type` and
         return a folder id.  Otherwise, `name_or_dict` should be a dictionary
@@ -260,11 +260,11 @@ class EccoDDE(object):
         names to folder ids will be returned.
         """
         if isinstance(name_or_dict, basestring):
-            return self.intlist('CreateFolder', name_or_dict, folder_type)[0]
+            return self.intlist('CreateFolder', folder_type, name_or_dict)[0]
         items = name_or_dict.items()
         items = zip(
             items,
-            self.intlist('CreateFolder', *unfold(items))
+            self.intlist('CreateFolder', *unfold([(j,i) for i,j in items]))
         )
         return dict([(k,i) for (k,t),i in items])
 
@@ -280,7 +280,7 @@ class EccoDDE(object):
         """Return a list of folder ids for folders matching `name`"""
         return self.intlist('GetFoldersByName', name)
 
-    def GetFoldersByType(self, folder_type=0):#
+    def GetFoldersByType(self, folder_type=0):
         """Return a list of folder ids whose types equal `folder_type`"""
         return self.intlist('GetFoldersByType', folder_type)
 
@@ -426,7 +426,7 @@ class EccoDDE(object):
         """Create a new 'Untitled' file, returning a session id"""
         return int(self('NewFile')[0][0])
 
-    def OpenFile(self, pathname):#
+    def OpenFile(self, pathname):
         """Open or switch to `pathname` and return a session ID
 
         If the named file was not actually opened (not found, corrupt, etc.),
@@ -511,7 +511,9 @@ class EccoDDE(object):
 
     def GetOpenFiles(self):
         """Return a list of session IDs for all currently-open files"""
-        return self.intlist("GetOpenFiles")
+        self.open() # ensure connect errors propagate
+        try: return self.intlist("GetOpenFiles")
+        except: return []
 
     def CreateView(self, name, folder_ids):
         assert folder_ids, "Must include at least one folder ID!"
@@ -519,21 +521,23 @@ class EccoDDE(object):
 
     def GetFolderAutoAssignRules(self, folder_id):#
         """Get list of strings defining auto-assign rules for `folder_id`"""
-        return self('GetFolderAutoAssignRules', folder_id)[0]
+        self.open() # ensure connect errors propagate
+        try: return self('GetFolderAutoAssignRules', folder_id)[0]
+        except: return []
 
     def GetCurrentFile(self):
         """Return the session id of the active file"""
-        return int(self('GetCurrentFile')[0][0])
+        self.open() # ensure connect errors propagate
+        try: return int(self('GetCurrentFile')[0][0])
+        except: return None
 
     def GetFileName(self, session_id):
         """Return the file name for the given session ID"""
         return self(format([['GetFileName', session_id]]))[0][0]
 
-
-
     # --- "DDE Pokes supported"
 
-    def ChangeFile(self, session_id):#
+    def ChangeFile(self, session_id):
         """Switch to the designated `session_id`"""
         if self.GetCurrentFile()!=session_id:
             # Alas, this poke doesn't always work, at least not in my Ecco...
@@ -545,7 +549,7 @@ class EccoDDE(object):
     def CloseFile(self, session_id):
         """Close the designated session, *without* saving it"""
         self.assert_session(session_id)
-        self.poke('CloseFile')
+        self.poke('CloseFile'); self.close() # force re-open for next access
 
     def CopyOLEItem(self, item_id):#
         """Copy the specified OLE item to the Windows clipboard"""
@@ -563,6 +567,11 @@ class EccoDDE(object):
         if not hasattr(items, '__iter__'): items = [items]
         self.poke('InsertItem', anchor_id, where, *items)
 
+
+
+
+
+
     def RemoveItem(self, item_id):#
         """Delete `item_id` (can be an iterable of ids)"""
         if hasattr(item_id, '__iter__'):
@@ -570,9 +579,7 @@ class EccoDDE(object):
         else:
             self.poke('RemoveItem', item_id)
 
-
-
-    def SaveFile(self, session_id, pathname=None):#
+    def SaveFile(self, session_id, pathname=None):
         """Save the designated session to `pathname`; fails if not current"""
         self.assert_session(session_id)
         if pathname:
@@ -580,7 +587,7 @@ class EccoDDE(object):
         else:
             self.poke('SaveFile')
 
-    def SetFolderName(self, folder_id, name):#
+    def SetFolderName(self, folder_id, name):
         """Set the name of `folder_id` to `name`"""
         self.poke('SetFolderName', folder_id, name)
 
@@ -605,13 +612,11 @@ class EccoDDE(object):
         list of values (either different folders for one item, or one folder
         for different items), or a list of lists of values.
         """
+        
         cmd = [['GetFolderValues'], []]
 
         multi_folder = hasattr(folder_ids, '__iter__')
         multi_item = hasattr(item_ids, '__iter__')
-
-
-
 
         if multi_folder:
             cmd[0].extend(folder_ids)
@@ -645,11 +650,6 @@ class EccoDDE(object):
             cmd.append(v)
 
         self.poke(cmd)
-
-
-
-
-
 
 
 

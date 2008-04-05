@@ -13,8 +13,8 @@ use the Ecco API reference as a rough guide to EccoDDE.  Some methods have
 enhanced functionality that you can access by using different argument types,
 but even these are nearly always just exposing capabilities of the underlying
 Ecco API, rather than doing any Python-specific wrapping.  48 of Ecco's 49 API
-calls are implemented.  (The 49th, ``AddFileToMenu`` does not have appear to be
-documented anywhere on the 'net.)
+calls are implemented.  (The 49th, ``AddFileToMenu``, does not have appear to
+be documented anywhere on the 'net.)
 
 The main value-add that EccoDDE provides over writing your own ad-hoc interface
 is robustness.  EccoDDE can transparently launch Ecco if it's not started, and
@@ -74,11 +74,19 @@ means you can (and probably should) close the connection when you won't be
 using it for a while.
 
 
-Some usage examples::
+Working With Files and Sessions
+===============================
 
-    >>> api.close_all()     # close everything else first
+The ``close_all()`` method closes all currently-open files::
+
+    >>> api.close_all()     # close any files currently open in Ecco
     
+``NewFile()`` creats a new, untitled file, returning a session ID::
+
     >>> session = api.NewFile()
+
+Which then will be visible in ``GetOpenFiles()`` (a list of the active session
+IDs), and as the ``GetCurrentFile()`` (which returns the active session ID)::
 
     >>> api.GetOpenFiles() == [session]
     True
@@ -86,21 +94,93 @@ Some usage examples::
     >>> api.GetCurrentFile() == session
     True
 
+The newly created file will be named '<Untitled>'::
+
     >>> api.GetFileName(session)
     '<Untitled>'
+
+Until it is saved::
+
+    >>> from tempfile import mkdtemp
+    >>> tmpdir = mkdtemp()
+
+    >>> import os
+    >>> testfile = os.path.join(tmpdir, 'testfile.eco')
+
+    >>> os.path.exists(testfile)
+    False
+
+    >>> api.SaveFile(session, testfile)
+
+    >>> os.path.exists(testfile)
+    True
+
+    >>> api.GetFileName(session)
+    '...\\testfile.eco'
+
+Once a session has a filename, it can be saved without specifying the name::
+
+    >>> api.SaveFile(session)
+
+And the ``CloseFile()`` and ``OpenFile()`` APIs work much as you would expect::
+
+    >>> api.CloseFile(session)
+
+    >>> session = api.OpenFile(testfile)
+
+    >>> api.GetOpenFiles() == [session]
+    True
+
+    >>> api.GetCurrentFile() == session
+    True
+
+And you can also use the ``ChangeFile()`` API to switch to a given session::
+
+    >>> session2 = api.NewFile()
+    >>> session2 == api.GetCurrentFile()
+    True
+
+    >>> api.SaveFile(session2, os.path.join(tmpdir, 'test2.eco'))
+
+    >>> api.ChangeFile(session)
+    >>> session == api.GetCurrentFile()
+    True
+    >>> session2 == api.GetCurrentFile()
+    False
+
+    >>> api.ChangeFile(session2)
+    >>> session == api.GetCurrentFile()
+    False
+    >>> session2 == api.GetCurrentFile()
+    True
+
+Note, by the way, that you can only close or save a file if it is the current
+session::
+
+    >>> api.SaveFile(session)
+    Traceback (most recent call last):
+      ...
+    StateError: Attempt to close or save inactive session
     
+    >>> api.CloseFile(session)
+    Traceback (most recent call last):
+      ...
+    StateError: Attempt to close or save inactive session
+    
+    >>> api.CloseFile(session2)
+
 
 Working With Folders
 ====================
 
-CreateFolder
-GetFolderOutline
-GetFoldersByName
-GetFoldersByType
-GetFolderName
-SetFolderName
-GetPopupValues
-GetFolderAutoAssignRules    XXX - file
+
+Listing and Looking Up Folders
+------------------------------
+
+The ``GetFolderOutline()`` method returns a list of ``(depth, id)`` tuples
+describing the folder outline of the current Ecco file, while the
+``GetFolderName()`` and ``GetFolderType()`` methods return the name or type
+for a given folder ID:: 
 
     >>> for folder, depth in api.GetFolderOutline():
     ...     print "%-30s %02d" % (
@@ -140,13 +220,19 @@ GetFolderAutoAssignRules    XXX - file
           Net Location             04
           Recurring Note Dates     02
 
-    >>> api.GetFoldersByName('Appointments')
-    [4]
+The values returned by ``GetFolderType()`` are available as constants in the
+``FolderType`` enumeration class::
 
     >>> from ecco_dde import FolderType
 
     >>> dir(FolderType)
     ['CheckMark', 'Date', 'Number', 'PopUpList', 'Text', ...]
+
+    >>> FolderType.CheckMark
+    1
+
+Which makes it convenient to fetch a list of folder ids based on folder type,
+using the ``GetFoldersByType()`` method::
 
     >>> date_folders = api.GetFoldersByType(FolderType.Date)
 
@@ -160,18 +246,77 @@ GetFolderAutoAssignRules    XXX - file
     To-Do's
     Recurring Note Dates
 
+You can also find the folders by name, using ``GetFoldersByName()``::
+
+    >>> api.GetFoldersByName('Appointments')
+    [4]
+
+(Note that this method always returns a list of ids, since more than one folder
+can have the same name.)
 
 
-Working With Files
-==================
+Creating And Managing Folders
+-----------------------------
 
-NewFile
-GetOpenFiles
-GetCurrentFile
-OpenFile
-ChangeFile
-SaveFile            XXX - file
+The ``CreateFolder()`` API can be used to create a single folder::
 
+    >>> f1 = api.CreateFolder('Test Folder 1')
+
+By default, it's created as a checkmark folder:
+
+    >>> api.GetFolderType(f1) == FolderType.CheckMark
+    True
+
+But you can also specify a type explicitly::
+
+    >>> popup = api.CreateFolder('A popup folder', FolderType.PopUpList)
+    >>> api.GetFolderType(popup) == FolderType.PopUpList
+    True
+
+At the moment, our example popup folder doesn't have any values; that will
+change later in this document, when we create some items with values in them::
+
+    >>> api.GetPopupValues(popup)
+    []
+
+``CreateFolder()`` can also create multiple folders at once, using a dictionary
+mapping names to folder types::
+
+    >>> d = api.CreateFolder(
+    ...     {'folder 3':FolderType.Text, 'folder 4':FolderType.Date}
+    ... )
+
+And the return value is a dictionary mapping the created folder names to their
+folder ids::
+
+    >>> d
+    {'folder 4': ..., 'folder 3': ...}
+
+    >>> f3 = d['folder 3']
+    >>> f4 = d['folder 4']
+
+    >>> api.GetFolderName(f3)
+    'folder 3'
+
+    >>> api.GetFolderType(f4)==FolderType.Date
+    True
+
+You can also rename an existing folder using ``SetFolderName()``::
+    
+    >>> api.SetFolderName(f4, 'A Date Folder')
+    >>> api.GetFolderName(f4)
+    'A Date Folder'
+
+And get its auto-assign rules (if any) using ``GetFolderAutoAssignRules()``::
+
+    >>> api.GetFolderAutoAssignRules(api.GetFoldersByName('Net Location')[0])
+    ['http:#']
+
+
+By the way, there is no way to programmatically delete an existing folder,
+change its type, or add/change its auto-assignment rules.  These actions can
+only be done through the Ecco UI.
+    
 
 Working With Items
 ==================
@@ -216,15 +361,21 @@ Working With Views
 
 GetViews
 GetViewNames
-GetViewColumns
-GetViewTLIs
+
 CreateView
+AddFolderToView
+GetViewFolders
+DeleteView
+
+AddColumnToView     XXX - vis
+GetViewColumns
+
+GetViewTLIs
+
 ChangeView          XXX - vis
 AddCompView         XXX - vis
 RemoveCompView      XXX - vis
-DeleteView
-AddColumnToView     XXX - vis
-AddFolderToView
+
 
 
 Miscellaneous APIs
@@ -276,7 +427,9 @@ PasteOLEItem        XXX
 
 Wrap-up::
 
-    >>> api.CloseFile(session)
-
+    >>> api.close_all()
     >>> api.close()
+
+    >>> from shutil import rmtree
+    >>> rmtree(tmpdir)
 
