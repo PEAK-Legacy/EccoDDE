@@ -3,7 +3,7 @@ import os, sys, time, csv, datetime
 __all__ = [
     'EccoDDE', 'DDEConnectionError', 'StateError', 'FileNotOpened',
     'WrongSession', 'ItemType', 'FolderType', 'InsertLevel', 'OLEMode',
-    'format_date', 'format_datetime',
+    'SelectionType', 'format_date', 'format_datetime',
 ]
 
 class DDEConnectionError(Exception):
@@ -42,7 +42,13 @@ def additional_tests():
 # Item Types
 class ItemType(object):
     ItemText = 1
-    OLELink = 2
+    OLE = 2
+
+# Selection Types
+class SelectionType(object):
+    Items = 1
+    Folders = 2
+    Nothing = 0
 
 # Folder Types
 class FolderType(object):
@@ -62,12 +68,6 @@ class InsertLevel(object):
 class OLEMode(object):
     Link = 1
     Embed = 2
-
-
-
-
-
-
 
 
 
@@ -412,7 +412,7 @@ class EccoDDE(object):
         """Type for `item_id` (or a list of types if id is an iterable)"""
         return self.one_or_many('GetItemType', item_id)
 
-    def GetSelection(self):#
+    def GetSelection(self):
         """Returns a list: [ type (1=items, 2=folders), selectedIds]"""
         res = [ map(int,line) for line in self('GetSelection') ]
         res[0] = res[0][0]
@@ -451,13 +451,13 @@ class EccoDDE(object):
 
     # --- "Extended DDE Requests"
 
-    def GetChanges(self, timestamp, folder_ids=()):#
+    def GetChanges(self, timestamp, folder_ids=()):
         """Get changes since `timestamp`, optionally restricted to `folder_ids`
 
         `timestamp` is an opaque value from Ecco itself, supplied as part of
         the return value from this method.  If `folder_ids` is supplied, only
         changes to those folders and the items in them are included. 
-        Returns a triple of ``(nextstamp, items, folders_)``, where
+        Returns a triple of ``(nextstamp, items, folders)``, where
         ``nextstamp`` is the value that should be passed in to the next call to
         ``GetChanges()``, ``items`` is a list of items with changed text or
         folder values, and ``folders`` is a list of folders that have had items
@@ -465,7 +465,7 @@ class EccoDDE(object):
         not all listed items or folders may have actually changed since your
         last call to this method.
         """
-        data = self('GetChanges', timestamp, *folder_ids)
+        data = self('GetChanges', timestamp, *folder_ids)+[[],[]]
         return int(data[0][0]), map(int, data[1]), map(int, data[2])
 
     def GetViews(self):
@@ -666,9 +666,16 @@ class EccoDDE(object):
         else:
             self.poke('SetItemText', item_id, text)
         
-    def ShowPhoneBookItem(self, item_id, clear=True):#
-        """Show the specified item in the phonebook view"""
-        self.poke('ShowPhoneBookItem', item_id, int(bool(clear)))
+    def ShowPhoneBookItem(self, item_id, only=True):
+        """Show the specified item in the phonebook view
+
+        Item or one of its parents must be in the Phonebook folder.  If `only`
+        is true, the phonebook will show only this item.  Otherwise, the item
+        is added to the current list of phonebook items.
+
+        This also switches to the phonebook view, if it's not already visible.
+        """
+        self.poke('ShowPhoneBookItem', item_id, int(bool(only)))
 
     # --- "Extended DDE Pokes"
 
@@ -684,6 +691,10 @@ class EccoDDE(object):
         """Remove the specified view from the current view's composite views"""
         self.poke('RemoveCompView', view_id)
 
+
+
+
+
     def SetCalDate(self, date):
         """Display `date` in the calendar (only if calendar is already visible)
 
@@ -692,8 +703,6 @@ class EccoDDE(object):
         a string already formatted to Ecco's date format.
         """
         self.poke('SetCalDate', format_date(date))
-
-
 
     def DeleteView(self, view_id):
         """Delete the specified view (`view_id` must be a single int)"""
@@ -714,15 +723,6 @@ class EccoDDE(object):
             self.poke(cmd, *args+tuple(ob))
         else:
             self.poke(cmd, *args+(ob,))
-
-
-
-
-
-
-
-
-
 
 
 

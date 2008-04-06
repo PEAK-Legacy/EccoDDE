@@ -7,7 +7,7 @@ from setuptools import setup
 
 # Metadata
 PROJECT = 'EccoDDE'
-VERSION = '0.5a1'
+VERSION = '0.9'
 TAGLINE = "Thin wrapper over the Ecco Personal Information Manager's DDE API"
 PACKAGES   = []
 NAMESPACES = []
@@ -30,7 +30,7 @@ setup(
     name=PROJECT, version=VERSION, description=TAGLINE,
     url = "http://cheeseshop.python.org/pypi/" + PROJECT,
     download_url = "http://peak.telecommunity.com/snapshots/",
-    long_description = file('README.txt').read(), #get_description(),
+    long_description = get_description(),
     author="Phillip J. Eby", author_email="peak@eby-sarna.com",
     license="PSF or ZPL", test_suite = 'ecco_dde',
     packages = PACKAGES, namespace_packages = NAMESPACES,

@@ -34,11 +34,11 @@ directed to the `PEAK mailing list`_.
 .. _Trellis: http://pypi.python.org/pypi/Trellis
 .. _Trellis tutorial: http://peak.telecommunity.com/DevCenter/Trellis
 
-.. EccoDDE developer's guide: http://peak.telecommunity.com/DevCenter/EccoDDE#toc
+.. _EccoDDE developer's guide: http://peak.telecommunity.com/DevCenter/EccoDDE#toc
 .. _PEAK mailing list: http://www.eby-sarna.com/mailman/listinfo/peak/
 
 .. _toc:
-.. contents: **Table of Contents**
+.. contents:: **Table of Contents**
 
 
 -----------------
@@ -51,7 +51,7 @@ To talk to Ecco, you will use an ``EccoDDE`` instance::
     >>> api = EccoDDE()
 
 The ``EccoDDE`` constructor accepts the following keyword-only arguments, which
-are used only if an initial attempt to contact Ecco fails::
+are used only if an initial attempt to contact Ecco fails:
 
 filename
     The filename to launch (with ``os.startfile()``) to run Ecco.  If ``None``
@@ -397,10 +397,10 @@ By the way, there are item type constants declared in the ``ItemType`` class::
 
     >>> from ecco_dde import ItemType
     >>> dir(ItemType)
-    ['ItemText', 'OLELink', ...]
+    ['ItemText', 'OLE', ...]
 
-An item is of type ``ItemText`` if it's a normal text item, and ``OLELink`` if
-it's an OLE item (e.g., one created using ``PasteOLEItem()``.
+An item is of type ``ItemText`` if it's a normal text item, and ``OLE`` if
+it's an OLE item (e.g., one created using ``PasteOLEItem()``).
 
 
 Querying and Updating Items/Values
@@ -725,23 +725,113 @@ multiple view IDs, in practice it crashes Ecco.)
 Miscellaneous APIs
 ==================
 
+``GetVersion()``
+----------------
+
 The ``GetVersion()`` method returns the Ecco API version number::
 
     >>> api.GetVersion()
     [2, 8, 0]
 
 
-GetChanges          XXX
-GetSelection        XXX
-ShowPhoneBookItem
+``GetChanges()``
+----------------
 
-CopyOLEItem         XXX
-PasteOLEItem        XXX
+The ``GetChanges()`` API returns a 3-tuple of ``(nextstamp, items, folders)``,
+where `nextstamp` is a timestamp to be passed back in the next time you call
+``GetChanges()``, `items` are the item ids that were changed or created since
+the last call, and `folders` are the folder ids of folders that had items
+removed from them since the last call.
+
+Initially, you should pass in a timestamp of 0, to get the ball rolling::
+
+    >>> nextstamp, items, folders = api.GetChanges(0)
+
+This will basically return all changes since the file was created, and a
+timestamp you can use to call again.  If no changes have occurred since that
+stamp, you'll get empty lists and the same timestamp again, the next time you
+call::
+
+    >>> api.GetChanges(nextstamp) == (nextstamp, [], [])
+    True
+
+Before using this, please read the Ecco DDE API docs carefully regarding how
+the timestamp resolution works and when/why you'll get duplicate change
+notices, as well as when/why certain notices will be delayed.  This is not
+necessarily a suitable method for staying in sync "live" with an active Ecco
+file, as you can miss certain kinds of changes for up to an hour before they'll
+appear in this method's results.
+
+``GetChanges()`` can optionally take a second argument, that lists the folders
+to be watched.  Any items that aren't in those folders won't be included in
+the results, but the folders themselves will be listed in the `folders` return
+if items were removed from them during the relevant timeframe.
+
+
+OLE Copy/Paste
+--------------
+
+The ``CopyOLEItem(item_id)`` method copies an OLE item to the clipboard.  To
+work, the item must have a ``GetItemType()`` of ``ItemType.OLE``.
+
+``PasteOLEItem(mode, optional_id, optional_data)`` pastes an OLE object from
+the Windows clipboard, either into an existing item, or creating a new item
+and returning its id (if `optional_id` is omitted or ``None``).  The first
+argument is an ``OLEMode``, either ``Embed`` or ``Link``::
 
     >>> from ecco_dde import OLEMode
     >>> dir(OLEMode)
     ['Embed', 'Link', ...]
 
+And the third argument, if supplied, should be a sequence of ``(folderid,val)``
+pairs, that will be used to initialize or update the item.
+
+(Unfortunately, there isn't any straightforward way to demo/test these API
+calls in this document, as you must have an OLE object either in the clipboard
+or in an existing Ecco file.  If you experience any problems using them, please
+let me know how to reproduce the problem.  Thanks.)
+
+
+``ShowPhoneBookItem()``
+-----------------------
+
+The ``ShowPhoneBookItem()`` method switches to the phonebook view and displays
+the specified item.  If you pass a false value as the second argument, the
+specified item will be added to the current search results in the phonebook
+view.  Otherwise, the search results are cleared first::
+
+    >>> pb, = api.GetFoldersByName('PhoneBook')
+    >>> api.SetFolderValues([an_item, another_item], pb, [1,1])
+    
+    >>> api.InsertItem(0, another_item) # make this a top-level item
+
+    >>> api.ShowPhoneBookItem(an_item)              # display an item...
+    >>> api.ShowPhoneBookItem(another_item, False)  # then add another
+
+Note, by the way, that the specified item must either be in the ``Phonebook``
+folder, or have a parent that is.  Otherwise, an error will be raised.
+
+
+``GetSelection()``
+------------------
+
+The ``GetSelection()`` method returns a ``[kind, ids]`` pair, where `ids` is a
+list of folder or item ids, and `kind` is a ``SelectionType`` constant
+indicating whether the ids are items or folders::
+
+    >>> from ecco_dde import SelectionType
+    >>> dir(SelectionType)
+    ['Folders', 'Items', 'Nothing', ...]
+
+In the previous section, we navigated to ``another_item``, so the current
+selection should reflect that::
+
+    >>> api.GetSelection() == [SelectionType.Items, [another_item]]
+    True
+
+
+``SetCalDate()``
+----------------
 
 The ``SetCalDate()`` method lets you set the calendar to the given date,
 provided that you change to the calendar view, and use an appropriately
