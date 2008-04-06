@@ -80,7 +80,7 @@ Working With Files and Sessions
 The ``close_all()`` method closes all currently-open files::
 
     >>> api.close_all()     # close any files currently open in Ecco
-    
+
 ``NewFile()`` creats a new, untitled file, returning a session ID::
 
     >>> session = api.NewFile()
@@ -161,12 +161,12 @@ session::
     Traceback (most recent call last):
       ...
     StateError: Attempt to close or save inactive session
-    
+
     >>> api.CloseFile(session)
     Traceback (most recent call last):
       ...
     StateError: Attempt to close or save inactive session
-    
+
     >>> api.CloseFile(session2)
 
 
@@ -180,7 +180,7 @@ Listing and Looking Up Folders
 The ``GetFolderOutline()`` method returns a list of ``(depth, id)`` tuples
 describing the folder outline of the current Ecco file, while the
 ``GetFolderName()`` and ``GetFolderType()`` methods return the name or type
-for a given folder ID:: 
+for a given folder ID::
 
     >>> for folder, depth in api.GetFolderOutline():
     ...     print "%-30s %02d" % (
@@ -236,6 +236,9 @@ using the ``GetFoldersByType()`` method::
 
     >>> date_folders = api.GetFoldersByType(FolderType.Date)
 
+Both ``GetFolderName()`` and ``GetFolderType()`` will return multiple values if
+their input is an iterable::
+
     >>> for name in api.GetFolderName(date_folders):    # accepts multiples
     ...     print name
     Phone / Time Log
@@ -245,6 +248,9 @@ using the ``GetFoldersByType()`` method::
     Due Dates
     To-Do's
     Recurring Note Dates
+
+    >>> api.GetFolderType(date_folders)
+    [2, 2, 2, 2, 2, 2, 2]
 
 You can also find the folders by name, using ``GetFoldersByName()``::
 
@@ -273,12 +279,6 @@ But you can also specify a type explicitly::
     >>> api.GetFolderType(popup) == FolderType.PopUpList
     True
 
-At the moment, our example popup folder doesn't have any values; that will
-change later in this document, when we create some items with values in them::
-
-    >>> api.GetPopupValues(popup)
-    []
-
 ``CreateFolder()`` can also create multiple folders at once, using a dictionary
 mapping names to folder types::
 
@@ -302,73 +302,245 @@ folder ids::
     True
 
 You can also rename an existing folder using ``SetFolderName()``::
-    
+
     >>> api.SetFolderName(f4, 'A Date Folder')
     >>> api.GetFolderName(f4)
     'A Date Folder'
 
-And get its auto-assign rules (if any) using ``GetFolderAutoAssignRules()``::
+
+Pop-ups and Auto-assign Rules
+-----------------------------
+
+You can retrieve a pop-up folder's values using ``GetPopupValues()``::
+
+    >>> api.GetPopupValues(popup)
+    []
+
+If you pass in an iterable of folder ids, you will get back a list of lists of
+pop-up values::
+
+    >>> api.GetPopupValues([popup])
+    [[]]
+
+At the moment, our example popup folder doesn't have any values.  Creating or
+modifying an item with values for this folder will add some::
+
+    >>> i1 = api.CreateItem('Test 1', [(popup, 'Blue')])
+    >>> i2 = api.CreateItem('Test 2', [(popup, 'Red')])
+
+    >>> api.GetPopupValues(popup)
+    ['Blue', 'Red']
+
+And the added values will stay around even if we delete the items::
+
+    >>> api.RemoveItem(i1)
+    >>> api.RemoveItem(i2)
+
+    >>> api.GetPopupValues([popup])
+    [['Blue', 'Red']]
+
+You can query a folder's auto-assign rules (if any) using
+``GetFolderAutoAssignRules()`` (which will only accept one folder id, btw)::
 
     >>> api.GetFolderAutoAssignRules(api.GetFoldersByName('Net Location')[0])
     ['http:#']
 
-
 By the way, there is no way to programmatically delete an existing folder,
 change its type, or add/change its auto-assignment rules.  These actions can
 only be done through the Ecco UI.
-    
+
 
 Working With Items
 ==================
 
-CreateItem
-GetFolderItems
-GetFolderValues
-SetFolderValues
-GetItemFolders
-GetItemParents
-GetItemSubs
-GetItemText
-GetItemType
-InsertItem
+
+Creating and Inspecting Items
+-----------------------------
+
+As we saw above, you can create items from text, and an optional sequence of
+``(folderid,value)`` pairs, passed to ``CreateItem()``::
+
+    >>> an_item = api.CreateItem('An item')
+
+    >>> another_item = api.CreateItem('Another item', [(popup, 'Red')])
+
+You can find out an item's text, folders, or type using ``GetItemText()``,
+``GetItemFolders()``, and ``GetItemType()`` respectively::
+
+    >>> api.GetItemText(an_item)
+    'An item'
+
+    >>> api.GetItemFolders(another_item)==[popup]
+    True
+
+    >>> api.GetItemType(an_item)
+    1
+
+Or you can pass in multiple item ids as a sequence, to get back a list of
+strings, item types, or lists of folder ids::
+
+    >>> both = [an_item, another_item]
+
+    >>> api.GetItemText(both)
+    ['An item', 'Another item']
+
+    >>> api.GetItemFolders(both)==[[], [popup]]
+    True
+
+    >>> api.GetItemType(both)
+    [1, 1]
+
+By the way, there are item type constants declared in the ``ItemType`` class::
+
+    >>> from ecco_dde import ItemType
+    >>> dir(ItemType)
+    ['ItemText', 'OLELink', ...]
+
+An item is of type ``ItemText`` if it's a normal text item, and ``OLELink`` if
+it's an OLE item (e.g., one created using ``PasteOLEItem()``.
+
+
+Querying and Updating Items/Values
+----------------------------------
+
+The ``GetFolderItems()`` method returns a list of item ids for a given folder
+id::
+
+    >>> api.GetFolderItems(popup) == [another_item]
+    True
+
+It can also accept optional extra arguments to specify sort and search options,
+as described in the Ecco API documents::
+
+    >>> api.GetFolderItems(popup, 'EQ', 'Red') == [another_item]
+    True
+
+    >>> api.GetFolderItems(popup, 'EQ', 'Blue')
+    []
+
+You can set folder values using ``SetFolderValues()``, with either individual
+item ids and folder ids, or sequences thereof::
+
+    >>> api.SetFolderValues(an_item, f1, 1)
+    >>> api.SetFolderValues(another_item, [f1,f3], [1,'some text'])
+    >>> api.SetFolderValues([an_item,another_item], f4, ['20010101','20020202'])
+
+    XXX need is+fs example
+
+And you can retrieve the values in a similar fashion, using
+``GetFolderValues()``::
+
+    >>> api.GetFolderValues(another_item, f1)
+    '1'
+
+    >>> api.GetFolderValues(another_item, [f3, f1])
+    ['some text', '1']
+
+    >>> api.GetFolderValues([an_item,another_item], f4)
+    ['20010101', '20020202']
+
+    XXX need is+fs example
+
+Now let's retrieve some items sorted by their item text (ascending and
+descending)::
+
+    >>> api.GetFolderItems(f1, 'ia') == [an_item, another_item]
+    True
+
+    >>> api.GetFolderItems(f1, 'id') == [another_item, an_item]
+    True
+
+You can also change items' text using ``SetItemText()``, either by passing in a
+single item id and text::
+
+    >>> api.SetItemText(an_item, 'A')
+    >>> api.GetItemText(an_item)
+    'A'
+
+Or by passing a dictionary mapping item id's to the desired text::
+
+    >>> api.SetItemText({an_item:'1', another_item:'2'})
+    >>> api.GetItemText([an_item, another_item])
+    ['1', '2']
+
+
+Item Hierarchy, Relocation, and Removal
+---------------------------------------
+
+GetItemParents - one, many
+GetItemSubs - depth 0, depth ?
+
+InsertItem - one, many
 
     >>> from ecco_dde import InsertLevel
     >>> dir(InsertLevel)
     ['Indent', 'Outdent', 'Same', ...]
 
-RemoveItem
-SetItemText
-
+RemoveItem - one, many
 
 
 Working With Views
 ==================
 
-    >>> api.GetViewNames(api.GetViews())
+The ``GetViews()`` method returns a list of view IDs for the current file::
+
+    >>> api.GetViews()
+    [2, 3]
+
+And the ``GetViewNames()`` method returns a list of names, given a list of
+view IDs::
+
+    >>> api.GetViewNames([2, 3])
     ['Calendar', 'PhoneBook']
+
+Or one name, if given a single view ID::
+
+    >>> api.GetViewNames(2)
+    'Calendar'
+
+Or a sequence of ``(name, view_id)`` pairs for all views in the current file,
+if not given an argument::
 
     >>> api.GetViewNames()
     [('Calendar', 2), ('PhoneBook', 3)]
 
-    >>> view = api.CreateView('All Dates', date_folders)
+You can create a new view by passing a name and a non-empty list of folders to
+the ``CreateView()`` method::
 
-    >>> api.GetViewFolders(view) == date_folders
-    True
+    >>> view = api.CreateView('All Dates', date_folders)
 
     >>> api.GetViewNames()
     [('Calendar', 2), ('PhoneBook', 3), ('All Dates', 5)]
 
+And you can query a view's folders using ``GetViewFolders()``, either with a
+single view ID::
 
-GetViews
-GetViewNames
+    >>> api.GetViewFolders(view) == date_folders
+    True
 
-CreateView
-AddFolderToView
-GetViewFolders
-DeleteView
+or with a list of view IDs, to get a list of lists of folders for each view::
 
-AddColumnToView     XXX - vis
-GetViewColumns
+    >>> api.GetViewFolders([view]) == [date_folders]
+    True
+
+You can also add folders to a view (although you can't remove them)::
+
+    >>> api.AddFolderToView(view, popup)
+
+    >>> api.GetViewFolders(view) == date_folders + [popup]
+    True
+
+You can add multiple folders by passing a sequence as the second argument,
+instead of a single folder id::
+
+    >>> api.AddFolderToView(view, [f1, f3])
+
+    >>> api.GetViewFolders(view) == date_folders + [popup, f1, f3]
+    True
+
+
+AddColumnToView - one, many     XXX - vis
+GetViewColumns - one, many
 
 GetViewTLIs
 
@@ -376,12 +548,13 @@ ChangeView          XXX - vis
 AddCompView         XXX - vis
 RemoveCompView      XXX - vis
 
+DeleteView - one, many
 
 
 Miscellaneous APIs
 ==================
 
-GetVersion
+The ``GetVersion()`` method returns the Ecco API version number::
 
     >>> api.GetVersion()
     [2, 8, 0]
@@ -391,11 +564,10 @@ GetChanges          XXX
 
 GetSelection        XXX
 
-    >>> from ecco_dde import ItemType
-    >>> dir(ItemType)
-    ['ItemText', 'OLELink', ...]
 
 SetCalDate          XXX - vis
+
+
 
 Date and time formatting::
 

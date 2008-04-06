@@ -230,9 +230,10 @@ class EccoDDE(object):
 
     def poke(self, cmd, *args):
         """Just like __call__(), but send a DDE poke, with no return value"""
-        if args:
-            cmd = format([(cmd,) + args])
-        self.connection.Poke(cmd)
+        data = args and format([args]) or ''
+        if self.connection is None:
+            self.open()
+        self.connection.Poke(cmd, data)
 
     def intlist(self, *cmd):
         return map(int, self(*cmd)[0])
@@ -274,7 +275,7 @@ class EccoDDE(object):
         `data`, if supplied, should be a sequence of ``(folderid,value)`` pairs
         for the item to be initialized with.
         """
-        return self.intlist('CreateItem', *unfold(data))[0]
+        return self.intlist('CreateItem', item, *unfold(data))[0]
 
     def GetFoldersByName(self, name):
         """Return a list of folder ids for folders matching `name`"""
@@ -354,7 +355,7 @@ class EccoDDE(object):
                 out.append(inp)
         data = self(cmd)
         if not hasattr(folder_ids, '__iter__'):
-            for i,v in enumerate(data): data[i], = v
+            for i,v in enumerate(data): data[i], = v or (None,)
         if not hasattr(item_ids, '__iter__'):
             data, = data
         return data
@@ -613,44 +614,44 @@ class EccoDDE(object):
         for different items), or a list of lists of values.
         """
         
-        cmd = [['GetFolderValues'], []]
+        items, folders = cmd = [[], []]
 
         multi_folder = hasattr(folder_ids, '__iter__')
         multi_item = hasattr(item_ids, '__iter__')
 
         if multi_folder:
-            cmd[0].extend(folder_ids)
+            folders.extend(folder_ids)
             if multi_item:
                 if not hasattr(values, '__len__'):
                     values = list(values)
             else:
                 values = [values]
         else:
-            cmd[0].append(folder_ids)
+            folders.append(folder_ids)
             if multi_item:
                 values = [[v] for v in values]
             else:
                 values = [[values]]
 
         if multi_item:
-            cmd[1].extend(item_ids)
+            items.extend(item_ids)
         else:
-            cmd[1].append(item_ids)
+            items.append(item_ids)
 
-        fc = len(cmd[0])-1
-        ic = len(cmd[1])
-        if len(values)!=ic:
+        if len(values)!=len(items):
             raise ValueError("Length mismatch between item_ids and values")
 
-        for i,v in values:
+        fc = len(folders)
+        for v in values:
             if not hasattr(v, '__len__'):
                 v = list(v)
             if len(v)!=fc:
                 raise ValueError("Length mismatch between folder_ids and values")
             cmd.append(v)
 
-        self.poke(cmd)
-
+        if self.connection is None:
+            self.open()
+        self.connection.Poke('SetFolderValues', format(cmd))
 
 
 
