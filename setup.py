@@ -28,11 +28,11 @@ def get_description():
 
 setup(
     name=PROJECT, version=VERSION, description=TAGLINE,
-    url = "http://cheeseshop.python.org/pypi/" + PROJECT,
+    url = "http://pypi.python.org/pypi/" + PROJECT,
     download_url = "http://peak.telecommunity.com/snapshots/",
     long_description = get_description(),
     author="Phillip J. Eby", author_email="peak@eby-sarna.com",
     license="PSF or ZPL", test_suite = 'ecco_dde',
-    packages = PACKAGES, namespace_packages = NAMESPACES,
+    py_modules = ['ecco_dde'],
     include_package_data = True, install_requires = []
 )
