@@ -7,7 +7,7 @@ from setuptools import setup
 
 # Metadata
 PROJECT = 'EccoDDE'
-VERSION = '0.9'
+VERSION = '0.9.1'
 TAGLINE = "Thin wrapper over the Ecco Personal Information Manager's DDE API"
 PACKAGES   = []
 NAMESPACES = []
