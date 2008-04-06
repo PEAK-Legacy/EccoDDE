@@ -81,6 +81,9 @@ The ``close_all()`` method closes all currently-open files::
 
     >>> api.close_all()     # close any files currently open in Ecco
 
+    >>> api.GetOpenFiles()
+    []
+
 ``NewFile()`` creats a new, untitled file, returning a session ID::
 
     >>> session = api.NewFile()
@@ -418,28 +421,30 @@ as described in the Ecco API documents::
     >>> api.GetFolderItems(popup, 'EQ', 'Blue')
     []
 
-You can set folder values using ``SetFolderValues()``, with either individual
-item ids and folder ids, or sequences thereof::
+You can set and retrieve folder values using ``SetFolderValues()`` and
+``GetFolderValues``, using either individual item ids and folder ids, or
+sequences thereof::
 
     >>> api.SetFolderValues(an_item, f1, 1)
-    >>> api.SetFolderValues(another_item, [f1,f3], [1,'some text'])
-    >>> api.SetFolderValues([an_item,another_item], f4, ['20010101','20020202'])
-
-    XXX need is+fs example
-
-And you can retrieve the values in a similar fashion, using
-``GetFolderValues()``::
-
-    >>> api.GetFolderValues(another_item, f1)
+    >>> api.GetFolderValues(an_item, f1)
     '1'
 
+    >>> api.SetFolderValues(another_item, [f1,f3], [1,'some text'])
     >>> api.GetFolderValues(another_item, [f3, f1])
     ['some text', '1']
 
+    >>> api.SetFolderValues(
+    ...     [an_item, another_item], f4, ['20010101', '20020202']
+    ... )
     >>> api.GetFolderValues([an_item,another_item], f4)
     ['20010101', '20020202']
 
-    XXX need is+fs example
+    >>> api.SetFolderValues(
+    ...     [an_item, another_item], [popup, f3],
+    ...     [['Blue', 'text a'], ['Red', 'text b']]
+    ... )
+    >>> api.GetFolderValues([an_item, another_item], [popup, f3])
+    [['Blue', 'text a'], ['Red', 'text b']]
 
 Now let's retrieve some items sorted by their item text (ascending and
 descending)::
@@ -467,16 +472,112 @@ Or by passing a dictionary mapping item id's to the desired text::
 Item Hierarchy, Relocation, and Removal
 ---------------------------------------
 
-GetItemParents - one, many
-GetItemSubs - depth 0, depth ?
+The ``GetItemParents()`` method returns a (possibly-empty) list of parent item
+ids for one or more items::
 
-InsertItem - one, many
+    >>> api.GetItemParents(an_item)
+    []
+
+    >>> api.GetItemParents([an_item, another_item])
+    [[], []]
+
+Hm, no parents so far, so let's rearrange the hierarchy using ``InsertItem()``.
+For that, we need to know the "anchor item" (a parent or sibling), and the item
+or items to be placed relative to it.  We also need to specify an insertion
+level::
 
     >>> from ecco_dde import InsertLevel
     >>> dir(InsertLevel)
     ['Indent', 'Outdent', 'Same', ...]
 
-RemoveItem - one, many
+The default level of ``Indent``places the targeted items as the first
+child(ren) of the anchor item, while ``Outdent`` places them as siblings of the
+anchor item's parent.  ``Same`` makes the items a sibling of the existing item.
+Let's begin by creating a new item, then make our existing items children of
+it::
+
+    >>> i3 = api.CreateItem('Item 3')
+    >>> api.InsertItem(i3, [an_item, another_item])
+
+    >>> api.GetItemParents([an_item, another_item]) == [[i3], [i3]]
+    True
+
+The ``GetItemSubs()`` method can be used to retrieve a sequence of
+``(depth,id)`` pairs, describing the children of an item::
+
+    >>> api.GetItemSubs(i3) == [(1, another_item), (1, an_item)]
+    True
+
+Notice that the items here are listed in reverse order from the order we
+added them.  This is because the default ``InsertLevel.Indent`` mode inserts
+children at the head of the parent's list of children.
+
+By default, ``GetItemSubs()`` returns a list of all children, to any depth::
+
+    >>> api.InsertItem(an_item, another_item)
+
+    >>> api.GetItemParents(another_item) == [i3, an_item]
+    True
+
+    >>> api.GetItemSubs(i3) == [(1, an_item), (2, another_item)]
+    True
+
+But it can be given a depth argument in order to prune the returned tree::
+
+    >>> api.GetItemSubs(i3, 1) == [(1, an_item)]
+    True
+
+Notice, by the way, that ``GetItemParents()`` returns parents in high-to-low
+order, i.e., first the top-level item id, and the item's immediate parent last.
+
+Also notice that ``InsertItem()`` might better be called "move item", since it
+relocates the item to the specified location.  You can detach an item from
+any existing parent using zero for the anchor id, and of course its children
+will move with it::
+
+    >>> api.InsertItem(0, an_item)
+
+    >>> api.GetItemParents(another_item) == [an_item]
+    True
+
+    >>> api.GetItemSubs(i3)
+    []
+
+Using a depth of ``InsertLevel.Same``, we can now put ``i3`` after
+``another_item``::
+
+    >>> api.InsertItem(another_item, i3, InsertLevel.Same)
+
+    >>> api.GetItemSubs(an_item) == [(1, another_item), (1, i3)]
+    True
+
+And let's add a couple more items so we can see how ``InsertLevel.Outdent``
+works::
+
+    >>> i4 = api.CreateItem('Item 4')
+    >>> i5 = api.CreateItem('Item 5')
+
+    >>> api.InsertItem(another_item, i4)
+    >>> api.InsertItem(i4, i5, InsertLevel.Outdent)
+    >>> api.GetItemSubs(an_item) == [(1,another_item), (2,i4), (1,i5), (1,i3)]
+    True
+
+As you can see, outdenting places an item in the next spot after the anchor
+item's parent.
+
+We can now delete some of our unneeded items with ``RemoveItem``, which works
+with either a single item id, or an iterable of them::
+
+    >>> api.RemoveItem(i4)
+    >>> api.GetItemSubs(an_item) == [(1, another_item), (1, i5), (1, i3)]
+    True
+
+    >>> api.RemoveItem([i3,i5])
+    >>> api.GetItemSubs(an_item) == [(1, another_item)]
+    True
+
+(Note, by the way, that ``RemoveItem`` will also delete an item's children, if
+any exist.)
 
 
 Working With Views
@@ -512,8 +613,12 @@ the ``CreateView()`` method::
     >>> api.GetViewNames()
     [('Calendar', 2), ('PhoneBook', 3), ('All Dates', 5)]
 
-And you can query a view's folders using ``GetViewFolders()``, either with a
-single view ID::
+
+Folders and TLIs
+----------------
+
+You can query a view's folders using ``GetViewFolders()``, either with a single
+view ID::
 
     >>> api.GetViewFolders(view) == date_folders
     True
@@ -533,22 +638,88 @@ You can also add folders to a view (although you can't remove them)::
 You can add multiple folders by passing a sequence as the second argument,
 instead of a single folder id::
 
-    >>> api.AddFolderToView(view, [f1, f3])
+    >>> view2 = api.CreateView('Another View', [f1])
+    
+    >>> api.AddFolderToView(view2, [f1, f3])
 
-    >>> api.GetViewFolders(view) == date_folders + [popup, f1, f3]
+    >>> api.GetViewFolders(view2) == [f1, f3]
+    True
+
+And the ``GetViewTLIs`` method returns a list of ``(folderid, itemids)`` pairs,
+giving you each folder in the view and its corresponding top-level items::
+
+    >>> api.GetViewTLIs(view2) == [(f1, [an_item]), (f3, [an_item])]
+    True
+
+By the way, you can pass a sequence of views to ``GetViewFolders()``::
+
+    >>> api.GetViewFolders([view, view2]) == [
+    ...     date_folders+[popup], [f1,f3]
+    ... ]
     True
 
 
-AddColumnToView - one, many     XXX - vis
-GetViewColumns - one, many
+Columns
+-------
 
-GetViewTLIs
+By default, any non-checkmark folders added to a view programmatically will
+also be added to the view as columns, with the most-recently added folders
+first::
 
-ChangeView          XXX - vis
-AddCompView         XXX - vis
-RemoveCompView      XXX - vis
+    >>> api.GetViewColumns(view2) == [f3]
+    True
 
-DeleteView - one, many
+But you can also add columns explicitly, using ``AddColumnToView`` to specify
+one or many folders::
+
+    >>> api.AddColumnToView(view2, f1)
+    >>> api.GetViewColumns(view2) == [f1, f3]
+    True
+
+    >>> api.AddColumnToView(view2, [f4, popup])
+    >>> api.GetViewColumns(view2) == [f4, popup, f1, f3]
+    True
+    
+And please note, by the way, that ``GetViewColumns()`` does NOT work with
+multiple view ids.  In testing, Ecco honors the format of the API by returning
+multiple lists, but the lists are all empty except for the first one.  So if
+you need the column information for multiple views, you'll need to do the
+looping yourself.
+
+
+Selecting, Composing, and Deleting Views
+----------------------------------------
+
+The ``ChangeView()`` method lets you select which view is displayed in Ecco::
+
+    >>> api.ChangeView(view)
+    >>> api.ChangeView(view2)
+
+Unfortunately, there's no way to get the current view ID, and thus no way of
+knowing whether this actually worked.  Similarly, there's no way to find out
+what split-screen views are active, so even though you can add and remove up to
+3 additional ("composite") views on the current view, there's no way to see if
+it's working, either::
+
+    >>> api.AddCompView(2)      # add the calendar
+    >>> api.AddCompView(3)      # and the phonebook
+    >>> api.AddCompView(view)   # and the other view...
+    
+    >>> api.RemoveCompView(2)       # take off the calendar
+    >>> api.RemoveCompView(3)       # and the phonebook
+    >>> api.RemoveCompView(view)    # and the other view...
+
+The ``DeleteView()`` API removes a view from the current file::
+
+    >>> api.GetViewNames()
+    [('Calendar', 2), ('PhoneBook', 3), ('All Dates', 5), ('Another View', 6)]
+
+    >>> api.DeleteView(view)
+    >>> api.GetViewNames()
+    [('Calendar', 2), ('PhoneBook', 3), ('Another View', 6)]
+
+(Note that although the Ecco API docs claim that this function can be given
+multiple view IDs, in practice it crashes Ecco.)
 
 
 Miscellaneous APIs
@@ -561,15 +732,30 @@ The ``GetVersion()`` method returns the Ecco API version number::
 
 
 GetChanges          XXX
-
 GetSelection        XXX
+ShowPhoneBookItem
+
+CopyOLEItem         XXX
+PasteOLEItem        XXX
+
+    >>> from ecco_dde import OLEMode
+    >>> dir(OLEMode)
+    ['Embed', 'Link', ...]
 
 
-SetCalDate          XXX - vis
+The ``SetCalDate()`` method lets you set the calendar to the given date,
+provided that you change to the calendar view, and use an appropriately
+formatted date::
+
+    >>> api.ChangeView(2)   # show the calendar
+    >>> api.SetCalDate('20080301')
 
 
+Date Conversion
+===============
 
-Date and time formatting::
+If you need to convert a Python date or datetime value to an Ecco DDE string,
+use these functions::
 
     >>> from ecco_dde import format_date, format_datetime
 
@@ -582,26 +768,26 @@ Date and time formatting::
     >>> format_datetime(dt)
     '200803311753'
 
+These functions are not particularly bright, however, and will pass through
+anything you give them that doesn't have a ``strftime()`` method::
+
     >>> format_date(27)     # objects w/out strftime pass thru
     27
-
     >>> format_datetime(99)
     99
 
-ShowPhoneBookItem
-CopyOLEItem         XXX
-PasteOLEItem        XXX
 
-    >>> from ecco_dde import OLEMode
-    >>> dir(OLEMode)
-    ['Embed', 'Link', ...]
+Conclusion
+==========
 
+This is just a cleanup section where we close all open Ecco files, close our
+DDE connection, and delete the temporary directory we used for saving test
+files.  You probably don't want to do these things in your application, except
+maybe closing the DDE connection::
 
-Wrap-up::
+    >>> api.close_all()     # close all files open in Ecco
+    >>> api.close()         # close the DDE connection
 
-    >>> api.close_all()
-    >>> api.close()
-
-    >>> from shutil import rmtree
+    >>> from shutil import rmtree   # and wipe out the temp dir.
     >>> rmtree(tmpdir)
 

@@ -244,7 +244,6 @@ class EccoDDE(object):
         else:
             return cvt(self(cmd, ob)[0][0])
 
-
     def one_or_many_to_many(self, cmd, ob, cvt=int):
         if hasattr(ob, '__iter__') and not isinstance(ob, basestring):
             return [map(cvt, row) for row in self(cmd, *ob)]
@@ -269,7 +268,7 @@ class EccoDDE(object):
         )
         return dict([(k,i) for (k,t),i in items])
 
-    def CreateItem(self, item, data=()):#
+    def CreateItem(self, item, data=()):
         """Create `item` (text) with optional data, returning new item id
 
         `data`, if supplied, should be a sequence of ``(folderid,value)`` pairs
@@ -286,7 +285,7 @@ class EccoDDE(object):
         return self.intlist('GetFoldersByType', folder_type)
 
 
-    def GetFolderItems(self, folder_id, *extra):#
+    def GetFolderItems(self, folder_id, *extra):
         """Get the items for `folder_id`, w/optional sorting and criteria
 
         Examples::
@@ -327,7 +326,7 @@ class EccoDDE(object):
 
 
 
-    def GetFolderValues(self, item_ids, folder_ids):#
+    def GetFolderValues(self, item_ids, folder_ids):
         """Return folder values for specified folders and items
 
         `item_ids` can be a single item ID, or a sequence.  If it's a sequence,
@@ -355,7 +354,7 @@ class EccoDDE(object):
                 out.append(inp)
         data = self(cmd)
         if not hasattr(folder_ids, '__iter__'):
-            for i,v in enumerate(data): data[i], = v or (None,)
+            for i,v in enumerate(data): data[i], = v or ('',)
         if not hasattr(item_ids, '__iter__'):
             data, = data
         return data
@@ -368,7 +367,7 @@ class EccoDDE(object):
 
 
 
-    def GetItemFolders(self, item_ids):#
+    def GetItemFolders(self, item_ids):
         """Get the folders for `item_ids`
 
         If `item_ids` is iterable, each element must be either an item id or
@@ -391,25 +390,25 @@ class EccoDDE(object):
         else:
             return self.intlist('GetItemFolders',item_ids)
 
-    def GetItemParents(self, item_id):#
-        """Return list of parent item ids (highest to lowest) of `item_id`
+    def GetItemParents(self, item_id):
+        """Return a root-first list of parent item ids of `item_id`
 
         If `item_id` is an iterable, return a list of lists, corresponding to
         the sequence of items.
         """
         return self.one_or_many_to_many('GetItemParents', item_id)
 
-    def GetItemSubs(self, item_id, depth=0):#
+    def GetItemSubs(self, item_id, depth=0):
         """itemId -> [(child_id,indent), ... ]"""
         return fold(self.intlist('GetItemSubs',depth,item_id))
 
-    def GetItemText(self, item_id):#
+    def GetItemText(self, item_id):
         """Text for `item_id` (or a list of strings if id is an iterable)"""
         return self.one_or_many('GetItemText', item_id, str)
 
 
 
-    def GetItemType(self, item_id):#
+    def GetItemType(self, item_id):
         """Type for `item_id` (or a list of types if id is an iterable)"""
         return self.one_or_many('GetItemType', item_id)
 
@@ -425,6 +424,7 @@ class EccoDDE(object):
 
     def NewFile(self):
         """Create a new 'Untitled' file, returning a session id"""
+        time.sleep(0.01)    # give Ecco a chance to catch up
         return int(self('NewFile')[0][0])
 
     def OpenFile(self, pathname):
@@ -446,8 +446,7 @@ class EccoDDE(object):
         if supplied, should be a sequence of ``(folderid,value)`` pairs for the
         item to be initialized or updated with.
         """
-        if item_id is None:
-            item_id = ''
+        if item_id is None: item_id = ''
         return int(self('PasteOleItem', mode, item_id, *unfold(data))[0][0])
 
     # --- "Extended DDE Requests"
@@ -491,7 +490,7 @@ class EccoDDE(object):
         """Folder ids for `view_id` (or list of lists if id is an iterable)"""
         return self.one_or_many_to_many('GetViewFolders', view_id)
 
-    def GetPopupValues(self, folder_id):#
+    def GetPopupValues(self, folder_id):
         """Popup values for `folder_id` (or list of lists if id is iterable)"""
         return self.one_or_many_to_many('GetPopupValues', folder_id, str)
 
@@ -499,15 +498,15 @@ class EccoDDE(object):
         """Return a list of ``(folderid, depth)`` pairs for the current file"""
         return fold(self.intlist("GetFolderOutline"))
 
-    def GetViewColumns(self, view_id):#
-        """Folderids for `view_id` cols (or list of lists if id is iterable)"""
-        return self.one_or_many_to_many('GetViewColumns', view_id)
+    def GetViewColumns(self, view_id):
+        """Folderids for `view_id` columns (`view_id` must be a single int)"""
+        return self.intlist('GetViewColumns', view_id)
 
-    def GetViewTLIs(self, view_id):#
+    def GetViewTLIs(self, view_id):
         """Return a list of ``(folder_id, itemlist)`` pairs for `view_id`"""
         rows = self('GetViewTLIs', view_id)
         for pos, row in enumerate(rows):
-            rows[pos] = row.pop(0), row
+            rows[pos] = int(row.pop(0)), map(int, row)
         return rows
 
     def GetOpenFiles(self):
@@ -520,7 +519,7 @@ class EccoDDE(object):
         assert folder_ids, "Must include at least one folder ID!"
         return self.intlist('CreateView', name, *folder_ids)[0]
 
-    def GetFolderAutoAssignRules(self, folder_id):#
+    def GetFolderAutoAssignRules(self, folder_id):
         """Get list of strings defining auto-assign rules for `folder_id`"""
         self.open() # ensure connect errors propagate
         try: return self('GetFolderAutoAssignRules', folder_id)[0]
@@ -556,7 +555,7 @@ class EccoDDE(object):
         """Copy the specified OLE item to the Windows clipboard"""
         self.poke('CopyOLEItem', item_id)
 
-    def InsertItem(self, anchor_id, items, where=InsertLevel.Indent):#
+    def InsertItem(self, anchor_id, items, where=InsertLevel.Indent):
         """Insert item or items at `anchor_id` w/optional indent
 
         `where` should be ``InsertLevel.Indent``, ``InsertLevel.Outdent``,
@@ -573,7 +572,7 @@ class EccoDDE(object):
 
 
 
-    def RemoveItem(self, item_id):#
+    def RemoveItem(self, item_id):
         """Delete `item_id` (can be an iterable of ids)"""
         if hasattr(item_id, '__iter__'):
             self.poke('RemoveItem', *item_id)
@@ -593,7 +592,7 @@ class EccoDDE(object):
         self.poke('SetFolderName', folder_id, name)
 
 
-    def SetFolderValues(self, item_ids, folder_ids, values):#
+    def SetFolderValues(self, item_ids, folder_ids, values):
         """Return folder values for specified folders and items
 
         `item_ids` can be a single item ID, or a sequence.  If it's a sequence,
@@ -655,7 +654,7 @@ class EccoDDE(object):
 
 
 
-    def SetItemText(self, item_id, text=None):#
+    def SetItemText(self, item_id, text=None):
         """Set the text of `item_id` to `text` (or a dictionary of item->text)
 
         If `text` is None, `item_id` must be a dictionary mapping item ID's to
@@ -673,19 +672,19 @@ class EccoDDE(object):
 
     # --- "Extended DDE Pokes"
 
-    def ChangeView(self, view_id):#
+    def ChangeView(self, view_id):
         """Display the specified view"""
         self.poke('ChangeView', view_id)
 
-    def AddCompView(self, view_id):#
+    def AddCompView(self, view_id):
         """Add `view_id` as a composite view to the current view"""
         self.poke('AddCompView', view_id)
 
-    def RemoveCompView(self, view_id):#
+    def RemoveCompView(self, view_id):
         """Remove the specified view from the current view's composite views"""
         self.poke('RemoveCompView', view_id)
 
-    def SetCalDate(self, date):#
+    def SetCalDate(self, date):
         """Display `date` in the calendar (only if calendar is already visible)
 
         `date` may be a ``datetime.date`` or ``datetime.datetime`` instance, or
@@ -696,17 +695,17 @@ class EccoDDE(object):
 
 
 
-    def DeleteView(self, view_id):#
-        """Delete the specified view(s)  (`view_id` can be an iterable)"""
-        self.poke_one_or_many('DeleteView', view_id)
+    def DeleteView(self, view_id):
+        """Delete the specified view (`view_id` must be a single int)"""
+        self.poke('DeleteView', view_id)
 
     #AddFileToMenu FilePath IconID
 
-    def AddColumnToView(self, view_id, folder_id):#
+    def AddColumnToView(self, view_id, folder_id):
         """Add the specified folder(s) as column(s) of `view_id`"""
         self.poke_one_or_many('AddColumnToView', folder_id, view_id)
 
-    def AddFolderToView(self, view_id, folder_id):#
+    def AddFolderToView(self, view_id, folder_id):
         """Add the specified folder(s) to contents of `view_id`"""
         self.poke_one_or_many('AddFolderToView', folder_id, view_id)
 
