@@ -271,7 +271,7 @@ The ``CreateFolder()`` API can be used to create a single folder::
 
     >>> f1 = api.CreateFolder('Test Folder 1')
 
-By default, it's created as a checkmark folder:
+By default, it's created as a checkmark folder::
 
     >>> api.GetFolderType(f1) == FolderType.CheckMark
     True
@@ -422,7 +422,7 @@ as described in the Ecco API documents::
     []
 
 You can set and retrieve folder values using ``SetFolderValues()`` and
-``GetFolderValues``, using either individual item ids and folder ids, or
+``GetFolderValues()``, using either individual item ids and folder ids, or
 sequences thereof::
 
     >>> api.SetFolderValues(an_item, f1, 1)
@@ -462,7 +462,7 @@ single item id and text::
     >>> api.GetItemText(an_item)
     'A'
 
-Or by passing a dictionary mapping item id's to the desired text::
+Or by passing a dictionary mapping item ids to the desired text::
 
     >>> api.SetItemText({an_item:'1', another_item:'2'})
     >>> api.GetItemText([an_item, another_item])
@@ -490,7 +490,7 @@ level::
     >>> dir(InsertLevel)
     ['Indent', 'Outdent', 'Same', ...]
 
-The default level of ``Indent``places the targeted items as the first
+The default level of ``Indent`` places the targeted items as the first
 child(ren) of the anchor item, while ``Outdent`` places them as siblings of the
 anchor item's parent.  ``Same`` makes the items a sibling of the existing item.
 Let's begin by creating a new item, then make our existing items children of
@@ -531,7 +531,7 @@ Notice, by the way, that ``GetItemParents()`` returns parents in high-to-low
 order, i.e., first the top-level item id, and the item's immediate parent last.
 
 Also notice that ``InsertItem()`` might better be called "move item", since it
-relocates the item to the specified location.  You can detach an item from
+relocates the item(s) to the specified location.  You can detach an item from
 any existing parent using zero for the anchor id, and of course its children
 will move with it::
 
@@ -757,10 +757,10 @@ call::
 
 Before using this, please read the Ecco DDE API docs carefully regarding how
 the timestamp resolution works and when/why you'll get duplicate change
-notices, as well as when/why certain notices will be delayed.  This is not
-necessarily a suitable method for staying in sync "live" with an active Ecco
-file, as you can miss certain kinds of changes for up to an hour before they'll
-appear in this method's results.
+notices.  (This is not necessarily a suitable method for staying in sync "live"
+with an active Ecco file, because every time a change occurs, you will receive
+a list of every change that's occurred within a 1 hour timestamp resolution --
+i.e., duplicating previous changes.)
 
 ``GetChanges()`` can optionally take a second argument, that lists the folders
 to be watched.  Any items that aren't in those folders won't be included in
