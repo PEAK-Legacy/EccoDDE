@@ -13,8 +13,8 @@ use the Ecco API reference as a rough guide to EccoDDE.  Some methods have
 enhanced functionality that you can access by using different argument types,
 but even these are nearly always just exposing capabilities of the underlying
 Ecco API, rather than doing any Python-specific wrapping.  48 of Ecco's 49 API
-calls are implemented.  (The 49th, ``AddFileToMenu``, does not have appear to
-be documented anywhere on the 'net.)
+calls are implemented.  (The 49th, ``AddFileToMenu``, does not appear to have
+been documented anywhere on the 'net.)
 
 The main value-add that EccoDDE provides over writing your own ad-hoc interface
 is robustness.  EccoDDE can transparently launch Ecco if it's not started, and
