@@ -26,7 +26,7 @@ def format_date(dt):
 
 def format_datetime(dt):
     if hasattr(dt, 'strftime'):
-        return dt.strftime("%Y%m%d%H%M%s")
+        return dt.strftime("%Y%m%d%H%M")
     return dt
 
 
