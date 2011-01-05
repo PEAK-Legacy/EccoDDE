@@ -829,6 +829,12 @@ selection should reflect that::
     >>> api.GetSelection() == [SelectionType.Items, [another_item]]
     True
 
+(NOTE: In my own testing, I have never gotten ``GetSelection()`` to work
+correctly when one or more folders are selected on their own.  Instead, my copy
+of Ecco returns a 1 (``SelectionType.Items``) and omits the `ids` list.  If
+this happens, EccoDDE adds an empty `ids` list so that ``GetSelection()`` will
+always return a 2-element sequence.)
+
 
 ``SetCalDate()``
 ----------------

@@ -70,10 +70,10 @@ class OLEMode(object):
     Embed = 2
 
 
-
-
-
-
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from StringIO import StringIO
 
 
 
@@ -93,6 +93,7 @@ csv.register_dialect("ecco", ecco)
 def sz(s):
     if '\000' in s:
         return s.split('\000',1)[0]
+    return s
 
 class output(list):
     """StringIO-substitute for csv writing"""
@@ -110,7 +111,6 @@ def fold(seq):
 
 def unfold(seq):
     return [i2 for i1 in seq for i2 in i1]
-
 
 
 
@@ -225,7 +225,7 @@ class EccoDDE(object):
             data = sz(self.connection.Request('GetLastResult'))
         else:
             data = sz(self.connection.Request(cmd))
-        data = data.replace('\n\r','\n').replace('\r','\n').split('\n')
+        data = StringIO(data.replace('\n\r','\n')+'\n') #.replace('\r','\n'))
         return list(csv.reader(data))
 
     def poke(self, cmd, *args):
@@ -242,7 +242,7 @@ class EccoDDE(object):
         if hasattr(ob, '__iter__') and not isinstance(ob, basestring):
             return map(cvt, self(cmd, *ob)[0])
         else:
-            return cvt(self(cmd, ob)[0][0])
+            return cvt((self(cmd, ob)[0]+[''])[0])
 
     def one_or_many_to_many(self, cmd, ob, cvt=int):
         if hasattr(ob, '__iter__') and not isinstance(ob, basestring):
@@ -415,7 +415,7 @@ class EccoDDE(object):
     def GetSelection(self):
         """Returns a list: [ type (1=items, 2=folders), selectedIds]"""
         res = [ map(int,line) for line in self('GetSelection') ]
-        res[0] = res[0][0]
+        res[0] = res[0][0]; res += [[]] * (len(res)==1)
         return res
 
     def GetVersion(self):
